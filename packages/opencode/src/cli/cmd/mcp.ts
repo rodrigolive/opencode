@@ -8,7 +8,7 @@ import { bootstrap } from "../bootstrap"
 
 export const McpCommand = cmd({
   command: "mcp",
-  builder: (yargs) => yargs.command(McpAddCommand).command(McpListCommand).command(McpRemoveCommand).demandCommand(),
+  builder: (yargs) => yargs.command(McpAddCommand).command(McpListCommand).command(McpRemoveCommand).command(McpHealthCommand).demandCommand(),
   async handler() {},
 })
 
@@ -59,7 +59,7 @@ export const McpAddCommand = cmd({
         }
         
         await Config.update(newConfig)
-        prompts.log.info(`Remote MCP server "${name}" configured with URL: ${url}`)
+        UI.println(`Remote MCP server "${name}" configured with URL: ${url}`)
         prompts.outro("MCP server added successfully")
         return
       }
@@ -81,7 +81,7 @@ export const McpAddCommand = cmd({
         }
         
         await Config.update(newConfig)
-        prompts.log.info(`Remote MCP server "${name}" configured with URL: ${server}`)
+        UI.println(`Remote MCP server "${name}" configured with URL: ${server}`)
         prompts.outro("MCP server added successfully")
         return
       }
@@ -101,7 +101,7 @@ export const McpAddCommand = cmd({
         }
         
         await Config.update(newConfig)
-        prompts.log.info(`Local MCP server "${name}" configured with command: ${server}`)
+        UI.println(`Local MCP server "${name}" configured with command: ${server}`)
         prompts.outro("MCP server added successfully")
         return
       }
@@ -146,7 +146,7 @@ export const McpAddCommand = cmd({
         }
         
         await Config.update(newConfig)
-        prompts.log.info(`Local MCP server "${name}" configured with command: ${command}`)
+        UI.println(`Local MCP server "${name}" configured with command: ${command}`)
         prompts.outro("MCP server added successfully")
         return
       }
@@ -182,13 +182,64 @@ export const McpAddCommand = cmd({
         }
         
         await Config.update(newConfig)
-        prompts.log.info(`Remote MCP server "${name}" configured with URL: ${url}`)
+        UI.println(`Remote MCP server "${name}" configured with URL: ${url}`)
       }
 
       prompts.outro("MCP server added successfully")
     })
   },
 })
+
+async function checkMcpServerHealth(_name: string, server: Config.Mcp) {
+  try {
+    if (server.type === "local") {
+      // For local servers, check if the command can be spawned
+      const command = server.command[0]
+      const { spawn } = await import("child_process")
+
+      // Try to spawn the command to see if it exists in PATH
+      // This is more reliable than existsSync for PATH commands
+      return new Promise((resolve) => {
+        const process = spawn(command, server.command.slice(1), {
+          stdio: ["pipe", "pipe", "pipe"],
+        })
+
+        // If the process spawns successfully, it exists
+        process.on("error", () => {
+          resolve(`${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Not working`)
+        })
+
+        // Give it a moment to start
+        setTimeout(() => {
+          if (process.exitCode === null) {
+            process.kill()
+            resolve(`${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} Working`)
+          } else {
+            resolve(`${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Not working`)
+          }
+        }, 100)
+      })
+    } else if (server.type === "remote") {
+      // For remote servers, try to connect and ping
+      const client = new Client({
+        name: "opencode-health-check",
+        version: "1.0.0",
+      })
+      const transport = new StreamableHTTPClientTransport(new URL(server.url))
+      await client.connect(transport)
+      await client.ping()
+      await client.close()
+      return `${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} Working`
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return `${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Error: ${error.message}`
+    }
+    return `${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Error: Unknown error`
+  }
+
+  return `${UI.Style.TEXT_DIM}?${UI.Style.TEXT_NORMAL} Unknown status`
+}
 
 export const McpListCommand = cmd({
   command: "list",
@@ -199,18 +250,19 @@ export const McpListCommand = cmd({
       UI.empty()
       const config = await Config.get()
       const mcpServers = config.mcp || {}
-      
+
       if (Object.keys(mcpServers).length === 0) {
-        prompts.log.info("No MCP servers configured")
+        UI.println("No MCP servers configured")
         return
       }
-      
-      prompts.log.info("Configured MCP servers:")
+
+      UI.println("Checking MCP server health...")
       for (const [name, server] of Object.entries(mcpServers)) {
+        const status = await checkMcpServerHealth(name, server)
         if (server.type === "local") {
-          prompts.log.info(`  ${name}: local - ${server.command.join(" ")}`)
+          UI.println(`${name}: ${server.command.join(" ")} - ${status}`)
         } else if (server.type === "remote") {
-          prompts.log.info(`  ${name}: remote - ${server.url}`)
+          UI.println(`${name}: ${server.url} (HTTP) - ${status}`)
         }
       }
     })
@@ -232,22 +284,75 @@ export const McpRemoveCommand = cmd({
       const config = await Config.get()
       const mcpServers = config.mcp || {}
       const name = argv.name as string
-      
+
       if (!mcpServers[name]) {
         prompts.log.error(`MCP server "${name}" not found`)
         return
       }
-      
+
       // Create new config without the specified server
       const { [name]: removed, ...remaining } = mcpServers
-      
+
       const newConfig = {
         mcp: Object.keys(remaining).length > 0 ? remaining : undefined,
       }
-      
+
       await Config.update(newConfig)
-      prompts.log.info(`MCP server "${name}" removed successfully`)
+      UI.println(`MCP server "${name}" removed successfully`)
       prompts.outro("MCP server removed successfully")
+    })
+  },
+})
+
+export const McpHealthCommand = cmd({
+  command: "health [name]",
+  describe: "check the health of MCP servers",
+  builder: (yargs) =>
+    yargs.positional("name", {
+      describe: "Name of specific MCP server to check (optional)",
+      type: "string",
+    }),
+  async handler(argv) {
+    const cwd = process.cwd()
+    await bootstrap(cwd, async () => {
+      UI.empty()
+      const config = await Config.get()
+      const mcpServers = config.mcp || {}
+
+      if (Object.keys(mcpServers).length === 0) {
+        UI.println("No MCP servers configured")
+        return
+      }
+
+      const serverName = argv.name as string | undefined
+
+      if (serverName) {
+        // Check specific server
+        const server = mcpServers[serverName]
+        if (!server) {
+          prompts.log.error(`MCP server "${serverName}" not found`)
+          return
+        }
+
+        UI.println(`Checking health of MCP server "${serverName}"...`)
+        const status = await checkMcpServerHealth(serverName, server)
+        if (server.type === "local") {
+          UI.println(`${serverName}: ${server.command.join(" ")} - ${status}`)
+        } else if (server.type === "remote") {
+          UI.println(`${serverName}: ${server.url} (HTTP) - ${status}`)
+        }
+      } else {
+        // Check all servers
+        UI.println("Checking health of all MCP servers...")
+        for (const [name, server] of Object.entries(mcpServers)) {
+          const status = await checkMcpServerHealth(name, server)
+          if (server.type === "local") {
+            UI.println(`${name}: ${server.command.join(" ")} - ${status}`)
+          } else if (server.type === "remote") {
+            UI.println(`${name}: ${server.url} (HTTP) - ${status}`)
+          }
+        }
+      }
     })
   },
 })
