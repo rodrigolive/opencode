@@ -714,9 +714,19 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    const filepath = path.join(Instance.directory, "config.json")
+    const filepath = path.join(Instance.directory, "opencode.json")
     const existing = await loadFile(filepath)
-    await Bun.write(filepath, JSON.stringify(mergeDeep(existing, config), null, 2))
+    
+    // Handle special case for mcp removal
+    let updatedConfig = config.mcp === undefined ? { ...existing } : mergeDeep(existing, config)
+    if (config.mcp === undefined) {
+      delete updatedConfig.mcp
+    } else if (config.mcp && Object.keys(config.mcp).length === 0) {
+      // Remove mcp key entirely if it's an empty object
+      delete updatedConfig.mcp
+    }
+    
+    await Bun.write(filepath, JSON.stringify(updatedConfig, null, 2))
     await Instance.dispose()
   }
 
