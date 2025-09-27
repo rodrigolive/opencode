@@ -5,7 +5,6 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
 import { bootstrap } from "../bootstrap"
-import path from "path"
 
 export const McpCommand = cmd({
   command: "mcp",
