@@ -8,12 +8,18 @@ import { bootstrap } from "../bootstrap"
 
 export const McpCommand = cmd({
   command: "mcp",
-  builder: (yargs) => yargs.command(McpAddCommand).command(McpListCommand).command(McpRemoveCommand).command(McpHealthCommand).demandCommand(),
+  builder: (yargs) =>
+    yargs
+      .command(McpAddCommand)
+      .command(McpListCommand)
+      .command(McpRemoveCommand)
+      .command(McpHealthCommand)
+      .demandCommand(),
   async handler() {},
 })
 
 export const McpAddCommand = cmd({
-  command: "add [name] [server]",
+  command: "add [name] [server..]",
   describe: "add an MCP server",
   builder: (yargs) =>
     yargs
@@ -24,84 +30,79 @@ export const McpAddCommand = cmd({
       .positional("server", {
         describe: "HTTP(S) URL or command arguments for the MCP server",
         type: "string",
+        array: true,
+        default: [],
       })
-      .option("http", {
-        describe: "Add an HTTP(S) server",
+      .option("env", {
+        describe: "Environment variables to set for local MCP servers",
         type: "string",
+        array: true,
       }),
   async handler(argv) {
     const cwd = process.cwd()
     await bootstrap(cwd, async () => {
       UI.empty()
       const config = await Config.get()
-      
-      // Handle deprecated --http flag
-      if (argv.http) {
-        const name = argv.name || await prompts.text({
-          message: "Enter MCP server name",
-          validate: (x) => (x && x.length > 0 ? undefined : "Required"),
-        })
-        if (prompts.isCancel(name)) throw new UI.CancelledError()
-        
-        const url = argv.http
-        if (!URL.canParse(url)) {
-          throw new Error("Invalid URL provided")
-        }
-        
-        const newConfig = {
-          mcp: {
-            ...config.mcp,
-            [name]: {
-              type: "remote" as const,
-              url: url,
-            },
-          },
-        }
-        
-        await Config.update(newConfig)
-        UI.println(`Remote MCP server "${name}" configured with URL: ${url}`)
-        prompts.outro("MCP server added successfully")
-        return
-      }
 
       // Handle new positional arguments
       const name = argv.name as string
-      const server = argv.server as string | undefined
-      
-      if (server && URL.canParse(server)) {
-        // It's an HTTP(S) server
-        const newConfig = {
-          mcp: {
-            ...config.mcp,
-            [name]: {
-              type: "remote" as const,
-              url: server,
+      const serverArgs = argv.server as string[]
+
+      if (serverArgs.length === 0) {
+        // No server arguments provided, continue to interactive mode
+      } else {
+        const server = serverArgs.join(" ")
+        // Check if it's an HTTP(S) URL using regex
+        const httpRegex = /^https?:\/\/.+/
+        if (httpRegex.test(server)) {
+          // It's an HTTP(S) server
+          const newConfig = {
+            mcp: {
+              ...config.mcp,
+              [name]: {
+                type: "remote" as const,
+                url: server,
+              },
             },
-          },
+          }
+
+          await Config.update(newConfig)
+          UI.println(`Remote MCP server "${name}" configured with URL: ${server}`)
+          prompts.outro("MCP server added successfully")
+          return
         }
-        
-        await Config.update(newConfig)
-        UI.println(`Remote MCP server "${name}" configured with URL: ${server}`)
-        prompts.outro("MCP server added successfully")
-        return
-      }
-      
-      if (server) {
+
         // It's a local command
-        const commandArray = server.split(" ").filter(Boolean)
-        
+        const commandArray = serverArgs.filter(Boolean)
+
+        // Parse environment variables if provided
+        let environment: Record<string, string> | undefined
+        if (argv.env) {
+          environment = {}
+          for (const envVar of argv.env as string[]) {
+            const [key, value] = envVar.split("=")
+            if (key && value !== undefined) {
+              environment[key] = value
+            }
+          }
+        }
+
         const newConfig = {
           mcp: {
             ...config.mcp,
             [name]: {
               type: "local" as const,
               command: commandArray,
+              ...(environment && { environment }),
             },
           },
         }
-        
+
         await Config.update(newConfig)
-        UI.println(`Local MCP server "${name}" configured with command: ${server}`)
+        UI.println(`Local MCP server "${name}" configured with command: ${serverArgs.join(" ")}`)
+        if (environment) {
+          UI.println(`Environment variables set: ${Object.keys(environment).join(", ")}`)
+        }
         prompts.outro("MCP server added successfully")
         return
       }
@@ -133,20 +134,50 @@ export const McpAddCommand = cmd({
         if (prompts.isCancel(command)) throw new UI.CancelledError()
 
         // Parse command into array
-        const commandArray = command.split(" ").filter(Boolean)
-        
+        const commandArray = command.trim() ? command.split(" ").filter(Boolean) : []
+
+        // Ask for environment variables
+        const addEnv = await prompts.confirm({
+          message: "Do you want to set environment variables for this server?",
+        })
+        if (prompts.isCancel(addEnv)) throw new UI.CancelledError()
+
+        let environment: Record<string, string> | undefined
+        if (addEnv) {
+          const envVars = await prompts.text({
+            message: "Enter environment variables (VAR1=value1 VAR2=value2)",
+            placeholder: "e.g., API_KEY=abc123 PORT=8080",
+          })
+          if (prompts.isCancel(envVars)) throw new UI.CancelledError()
+
+          if (envVars) {
+            environment = {}
+            const envVarArray = envVars.split(" ").filter(Boolean)
+            for (const envVar of envVarArray) {
+              const [key, value] = envVar.split("=")
+              if (key && value !== undefined) {
+                environment[key] = value
+              }
+            }
+          }
+        }
+
         const newConfig = {
           mcp: {
             ...config.mcp,
             [name]: {
               type: "local" as const,
               command: commandArray,
+              ...(environment && { environment }),
             },
           },
         }
-        
+
         await Config.update(newConfig)
-        UI.println(`Local MCP server "${name}" configured with command: ${command}`)
+        UI.println(`Local MCP server "${name}" configured with command: ${commandArray.join(" ")}`)
+        if (environment) {
+          UI.println(`Environment variables set: ${Object.keys(environment).join(", ")}`)
+        }
         prompts.outro("MCP server added successfully")
         return
       }
@@ -170,7 +201,7 @@ export const McpAddCommand = cmd({
         })
         const transport = new StreamableHTTPClientTransport(new URL(url))
         await client.connect(transport)
-        
+
         const newConfig = {
           mcp: {
             ...config.mcp,
@@ -180,7 +211,7 @@ export const McpAddCommand = cmd({
             },
           },
         }
-        
+
         await Config.update(newConfig)
         UI.println(`Remote MCP server "${name}" configured with URL: ${url}`)
       }
@@ -200,19 +231,23 @@ async function checkMcpServerHealth(_name: string, server: Config.Mcp) {
       // Try to spawn the command to see if it exists in PATH
       // This is more reliable than existsSync for PATH commands
       return new Promise((resolve) => {
-        const process = spawn(command, server.command.slice(1), {
+        const spawnedProcess = spawn(command, server.command.slice(1), {
           stdio: ["pipe", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            ...(server.environment || {}),
+          },
         })
 
         // If the process spawns successfully, it exists
-        process.on("error", () => {
+        spawnedProcess.on("error", () => {
           resolve(`${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Not working`)
         })
 
         // Give it a moment to start
         setTimeout(() => {
-          if (process.exitCode === null) {
-            process.kill()
+          if (spawnedProcess.exitCode === null) {
+            spawnedProcess.kill()
             resolve(`${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL} Working`)
           } else {
             resolve(`${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL} Not working`)
