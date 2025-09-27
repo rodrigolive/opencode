@@ -388,7 +388,7 @@ func LoadFromConfig(config *opencode.Config, customCommands []opencode.Command) 
 		{
 			Name:        AppExitCommand,
 			Description: "exit the app",
-			Keybindings: parseBindings("ctrl+c", "<leader>q"),
+			Keybindings: parseBindings("ctrl+c", "ctrl+d", "<leader>q"),
 			Trigger:     []string{"exit", "quit", "q"},
 		},
 	}

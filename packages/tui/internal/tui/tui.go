@@ -148,7 +148,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 
-			if keyString == "enter" || keyString == "esc" || keyString == "ctrl+c" {
+			if keyString == "enter" || keyString == "esc" || keyString == "ctrl+c" || keyString == "ctrl+d" {
 				a.app.IsBashMode = false
 				if keyString == "enter" {
 					updated, cmd := a.editor.SubmitBash()
@@ -169,6 +169,16 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, cmd
 			case "ctrl+c":
 				// give the modal a chance to handle the ctrl+c
+				updatedModal, cmd := a.modal.Update(msg)
+				a.modal = updatedModal.(layout.Modal)
+				if cmd != nil {
+					return a, cmd
+				}
+				cmd = a.modal.Close()
+				a.modal = nil
+				return a, cmd
+			case "ctrl+d":
+				// give the modal a chance to handle the ctrl+d
 				updatedModal, cmd := a.modal.Update(msg)
 				a.modal = updatedModal.(layout.Modal)
 				if cmd != nil {
@@ -240,7 +250,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if a.showCompletionDialog {
 			switch keyString {
-			case "tab", "enter", "esc", "ctrl+c", "up", "down", "ctrl+p", "ctrl+n":
+			case "tab", "enter", "esc", "ctrl+c", "ctrl+d", "up", "down", "ctrl+p", "ctrl+n":
 				updated, cmd := a.completions.Update(msg)
 				a.completions = updated.(dialog.CompletionDialog)
 				cmds = append(cmds, cmd)
