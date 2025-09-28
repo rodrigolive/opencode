@@ -93,9 +93,9 @@ func setTerminalTitle(title string) {
 	}
 
 	if title == "" {
-		title = "☐⊏"
+		title = "⊐"
 	} else {
-		title = "☐⊏" + " " + title
+		title = "⊐" + " " + title
 	}
 
 	if os.Getenv("SHELL") != "" && strings.Contains(os.Getenv("SHELL"), "fish") {
