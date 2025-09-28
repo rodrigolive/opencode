@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -23,7 +24,93 @@ import (
 
 var Version = "dev"
 
+func setTerminalTitle(title string) {
+	if os.Getenv("CLAUDE_CODE_DISABLE_TERMINAL_TITLE") != "" {
+		return
+	}
+	if os.Getenv("OPENCODE_DISABLE_TERMINAL_TITLE") != "" {
+		return
+	}
+	if os.Getenv("CODESPACES") != "" {
+		return
+	}
+	if os.Getenv("JEST_WORKER_ID") != "" {
+		return
+	}
+
+	if os.Getenv("GITHUB_ACTIONS") != "" {
+		return
+	}
+
+	// Do not set title in SSH sessions
+	if os.Getenv("SSH_TTY") != "" || os.Getenv("SSH_CONNECTION") != "" {
+		return
+	}
+
+	if os.Getenv("CI") != "" {
+		return
+	}
+
+	if os.Getenv("VITEST") != "" {
+		return
+	}
+
+	if os.Getenv("TERM_PROGRAM") == "vscode" {
+		return
+	}
+
+	if os.Getenv("TERM_PROGRAM") == "jetbrains" {
+		return
+	}
+
+	if os.Getenv("VIM") != "" {
+		return
+	}
+
+	if os.Getenv("NVIM") != "" {
+		return
+	}
+
+	if os.Getenv("INTELLIJ") != "" {
+		return
+	}
+
+	if os.Getenv("TERM") == "dumb" {
+		return
+	}
+
+	if os.Getenv("NO_COLOR") != "" {
+		return
+	}
+
+	if os.Getenv("GITHUB_WORKFLOW") != "" {
+		return
+	}
+
+	if os.Getenv("GITHUB_ACTION") != "" {
+		return
+	}
+
+    if title == "" {
+        title = "☐⊏"
+    } else {
+        title = "☐⊏" + " " + title
+    }
+
+	if os.Getenv("SHELL") != "" && strings.Contains(os.Getenv("SHELL"), "fish") {
+		// Fish shell has different escape sequence handling
+		os.Stdout.WriteString(fmt.Sprintf("\x1B]0;%s\x07", title))
+	} else if os.Getenv("TMUX") != "" {
+		// TMUX requires different approach
+		os.Stdout.WriteString(fmt.Sprintf("\x1B]2;%s\x1B\\", title))
+	} else {
+		// Standard terminal
+		os.Stdout.WriteString(fmt.Sprintf("\x1B]0;%s\x07", title))
+	}
+}
+
 func main() {
+	setTerminalTitle("")
 	version := Version
 	if version != "dev" && !strings.HasPrefix(Version, "v") {
 		version = "v" + Version
