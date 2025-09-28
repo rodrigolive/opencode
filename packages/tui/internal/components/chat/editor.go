@@ -46,7 +46,7 @@ type EditorComponent interface {
 	SetValue(value string)
 	SetValueWithAttachments(value string)
 	SetInterruptKeyInDebounce(inDebounce bool)
-	SetExitKeyInDebounce(inDebounce bool)
+	SetExitKeyInDebounce(inDebounce bool, key string)
 	RestoreFromHistory(index int)
 }
 
@@ -57,6 +57,7 @@ type editorComponent struct {
 	spinner                spinner.Model
 	interruptKeyInDebounce bool
 	exitKeyInDebounce      bool
+	lastExitKey            string
 	historyIndex           int    // -1 means current (not in history)
 	currentText            string // Store current text when navigating history
 	pasteCounter           int
@@ -380,7 +381,10 @@ func (m *editorComponent) Content() string {
 
 	hint := base(m.getSubmitKeyText()) + muted(" send   ")
 	if m.exitKeyInDebounce {
-		keyText := m.getExitKeyText()
+		keyText := m.lastExitKey
+		if keyText == "" {
+			keyText = m.getExitKeyText()
+		}
 		hint = base(keyText+" again") + muted(" to exit")
 	} else if m.app.IsBusy() {
 		keyText := m.getInterruptKeyText()
@@ -647,8 +651,11 @@ func (m *editorComponent) SetValueWithAttachments(value string) {
 	}
 }
 
-func (m *editorComponent) SetExitKeyInDebounce(inDebounce bool) {
+func (m *editorComponent) SetExitKeyInDebounce(inDebounce bool, key string) {
 	m.exitKeyInDebounce = inDebounce
+	if inDebounce {
+		m.lastExitKey = key
+	}
 }
 
 func (m *editorComponent) getInterruptKeyText() string {
@@ -662,6 +669,7 @@ func (m *editorComponent) getSubmitKeyText() string {
 func (m *editorComponent) getExitKeyText() string {
 	return m.app.Commands[commands.AppExitCommand].Keys()[0]
 }
+
 
 // shouldSummarizePastedText determines if pasted text should be summarized
 func (m *editorComponent) shouldSummarizePastedText(text string) bool {

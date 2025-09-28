@@ -316,14 +316,14 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case ExitKeyIdle:
 				// First exit key press - start debounce timer
 				a.exitKeyState = ExitKeyFirstPress
-				a.editor.SetExitKeyInDebounce(true)
+				a.editor.SetExitKeyInDebounce(true, keyString)
 				return a, tea.Tick(exitDebounceTimeout, func(t time.Time) tea.Msg {
 					return ExitDebounceTimeoutMsg{}
 				})
 			case ExitKeyFirstPress:
 				// Second exit key press within timeout - actually exit
 				a.exitKeyState = ExitKeyIdle
-				a.editor.SetExitKeyInDebounce(false)
+				a.editor.SetExitKeyInDebounce(false, keyString)
 				return a, util.CmdHandler(commands.ExecuteCommandMsg(exitCommand))
 			}
 		}
@@ -768,7 +768,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ExitDebounceTimeoutMsg:
 		// Reset exit key state after timeout
 		a.exitKeyState = ExitKeyIdle
-		a.editor.SetExitKeyInDebounce(false)
+		a.editor.SetExitKeyInDebounce(false, "")
 	case tea.PasteMsg, tea.ClipboardMsg:
 		// Paste events: prioritize modal if active, otherwise editor
 		if a.modal != nil {
