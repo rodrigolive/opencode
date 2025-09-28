@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -91,11 +92,11 @@ func setTerminalTitle(title string) {
 		return
 	}
 
-    if title == "" {
-        title = "☐⊏"
-    } else {
-        title = "☐⊏" + " " + title
-    }
+	if title == "" {
+		title = "☐⊏"
+	} else {
+		title = "☐⊏" + " " + title
+	}
 
 	if os.Getenv("SHELL") != "" && strings.Contains(os.Getenv("SHELL"), "fish") {
 		// Fish shell has different escape sequence handling
@@ -110,7 +111,22 @@ func setTerminalTitle(title string) {
 }
 
 func main() {
-	setTerminalTitle("")
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = ""
+	}
+
+	// Make cwd relative to parent directory without starting or ending slashes
+	if cwd != "/" && cwd != "." {
+		// Get just the directory name (last part of the path)
+		cwd = filepath.Base(cwd)
+	}
+
+	// Remove starting and ending slashes if present
+	cwd = strings.TrimPrefix(cwd, "/")
+	cwd = strings.TrimSuffix(cwd, "/")
+
+	setTerminalTitle(cwd)
 	version := Version
 	if version != "dev" && !strings.HasPrefix(Version, "v") {
 		version = "v" + Version
