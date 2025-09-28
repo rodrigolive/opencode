@@ -91,11 +91,11 @@ func setTerminalTitle(title string) {
 		return
 	}
 
-    if title == "" {
-        title = "☐⊏"
-    } else {
-        title = "☐⊏" + " " + title
-    }
+	if title == "" {
+		title = "⊐"
+	} else {
+		title = "⊐" + " " + title
+	}
 
 	if os.Getenv("SHELL") != "" && strings.Contains(os.Getenv("SHELL"), "fish") {
 		// Fish shell has different escape sequence handling
