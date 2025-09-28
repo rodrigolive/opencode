@@ -8,6 +8,19 @@
   </a>
 </p>
 <p align="center">AI coding agent, built for the terminal.</p>
+
+## This Fork
+
+This fork of opencode includes several enhancements and bug fixes:
+
+- **Terminal Title Feature**: Set terminal title to '☐⊏' on startup using OSC escape sequences, with environment-based disabling options
+- **Enhanced Exit Options**: Added Ctrl+D as an additional keybinding to exit opencode
+- **MCP Command Improvements**:
+  - Added MCP command feature for managing Model Context Protocol servers
+  - Support for variadic arguments in MCP add command
+  - Auto-detection of HTTP(S) URLs in MCP commands
+  - Colored output for MCP server health status
+- **Code Quality Fixes**: Removed unused path import to fix typecheck issues
 <p align="center">
   <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
   <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
