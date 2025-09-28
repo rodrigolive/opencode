@@ -201,39 +201,52 @@ export default function Page() {
     local.session.setActive(session!.id)
     local.layout.openRightPane()
 
-    const response = await sdk.session.prompt({
-      path: { id: session!.id },
-      body: {
-        agent: local.agent.current()!.name,
-        model: { modelID: local.model.current()!.id, providerID: local.model.current()!.provider.id },
-        parts: [
-          {
-            type: "text",
-            text: prompt,
-          },
-          ...local.file
-            .opened()
-            .filter((f) => f.selection || local.file.active()?.path === f.path)
-            .flatMap((f) => [
-              {
-                type: "file" as const,
-                mime: "text/plain",
-                url: `file://${f.absolute}${f.selection ? `?start=${f.selection.startLine}&end=${f.selection.endLine}` : ""}`,
-                filename: f.name,
-                source: {
+    let response
+    // Check if prompt starts with "!" for shell mode
+    if (prompt.startsWith("!")) {
+      const shellCommand = prompt.slice(1).trim()
+      response = await sdk.session.shell({
+        path: { id: session!.id },
+        body: {
+          agent: local.agent.current()!.name,
+          command: shellCommand,
+        },
+      })
+    } else {
+      response = await sdk.session.prompt({
+        path: { id: session!.id },
+        body: {
+          agent: local.agent.current()!.name,
+          model: { modelID: local.model.current()!.id, providerID: local.model.current()!.provider.id },
+          parts: [
+            {
+              type: "text",
+              text: prompt,
+            },
+            ...local.file
+              .opened()
+              .filter((f) => f.selection || local.file.active()?.path === f.path)
+              .flatMap((f) => [
+                {
                   type: "file" as const,
-                  text: {
-                    value: "@" + f.name,
-                    start: 0, // f.start,
-                    end: 0, // f.end,
+                  mime: "text/plain",
+                  url: `file://${f.absolute}${f.selection ? `?start=${f.selection.startLine}&end=${f.selection.endLine}` : ""}`,
+                  filename: f.name,
+                  source: {
+                    type: "file" as const,
+                    text: {
+                      value: "@" + f.name,
+                      start: 0, // f.start,
+                      end: 0, // f.end,
+                    },
+                    path: f.absolute,
                   },
-                  path: f.absolute,
                 },
-              },
-            ]),
-        ],
-      },
-    })
+              ]),
+          ],
+        },
+      })
+    }
 
     console.log("response", response)
   }
