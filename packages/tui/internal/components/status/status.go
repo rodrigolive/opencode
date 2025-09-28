@@ -334,6 +334,17 @@ func NewStatusCmp(app *app.App) StatusComponent {
 	if err == nil && homePath != "" && strings.HasPrefix(cwdPath, homePath) {
 		cwdPath = "~" + cwdPath[len(homePath):]
 	}
+
+	// Make cwd relative to parent directory without starting or ending slashes
+	if cwdPath != "/" && cwdPath != "." {
+		// Get just the directory name (last part of the path)
+		cwdPath = filepath.Base(cwdPath)
+	}
+
+	// Remove starting and ending slashes if present
+	cwdPath = strings.TrimPrefix(cwdPath, "/")
+	cwdPath = strings.TrimSuffix(cwdPath, "/")
+
 	statusComponent.cwd = cwdPath
 
 	return statusComponent
