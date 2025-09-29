@@ -199,6 +199,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.app.IsLeaderSequence {
 			matches := a.app.Commands.Matches(msg, a.app.IsLeaderSequence)
 			a.app.IsLeaderSequence = false
+			a.editor.SetLeaderHelp(false)
 			if len(matches) > 0 {
 				return a, util.CmdHandler(commands.ExecuteCommandsMsg(matches))
 			}
@@ -281,6 +282,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			!a.app.IsLeaderSequence &&
 			key.Matches(msg, *a.leaderBinding) {
 			a.app.IsLeaderSequence = true
+			a.editor.SetLeaderHelp(true)
 			return a, nil
 		}
 
@@ -343,7 +345,13 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Suspend
 		}
 
-		// 10. Fallback to editor. This is for other characters like backspace, tab, etc.
+		// 10. Hide leader help if any other key is pressed
+		if a.app.IsLeaderSequence && msg.Text != "" {
+			a.app.IsLeaderSequence = false
+			a.editor.SetLeaderHelp(false)
+		}
+
+		// 11. Fallback to editor. This is for other characters like backspace, tab, etc.
 		updatedEditor, cmd := a.editor.Update(msg)
 		a.editor = updatedEditor.(chat.EditorComponent)
 		return a, cmd
@@ -1537,6 +1545,12 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	case commands.AppExitCommand:
 		return a, tea.Quit
+	case commands.AppExitNoClearCommand:
+		// Exit without clearing screen but reset terminal modes and move cursor to bottom
+		return a, tea.Sequence(
+			tea.ExitAltScreen,
+			tea.Quit,
+		)
 	}
 	return a, tea.Batch(cmds...)
 }
