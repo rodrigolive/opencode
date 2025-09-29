@@ -160,6 +160,7 @@ const (
 	MessagesUndoCommand             CommandName = "messages_undo"
 	MessagesRedoCommand             CommandName = "messages_redo"
 	AppExitCommand                  CommandName = "app_exit"
+	AppExitNoClearCommand           CommandName = "app_exit_no_clear"
 )
 
 func (k Command) Matches(msg tea.KeyPressMsg, leader bool) bool {
@@ -388,8 +389,13 @@ func LoadFromConfig(config *opencode.Config, customCommands []opencode.Command) 
 		{
 			Name:        AppExitCommand,
 			Description: "exit the app",
-			Keybindings: parseBindings("ctrl+c", "ctrl+d", "<leader>q"),
+			Keybindings: parseBindings("ctrl+c", "<leader>q"),
 			Trigger:     []string{"exit", "quit", "q"},
+		},
+		{
+			Name:        AppExitNoClearCommand,
+			Description: "exit the app without clearing screen",
+			Keybindings: parseBindings("ctrl+d"),
 		},
 	}
 	registry := make(CommandRegistry)
