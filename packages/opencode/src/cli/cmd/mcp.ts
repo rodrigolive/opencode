@@ -37,6 +37,10 @@ export const McpAddCommand = cmd({
         describe: "Environment variables to set for local MCP servers",
         type: "string",
         array: true,
+      })
+      .option("api-key", {
+        describe: "API key to set as Bearer token in Authorization header for remote MCP servers",
+        type: "string",
       }),
   async handler(argv) {
     const cwd = process.cwd()
@@ -62,12 +66,20 @@ export const McpAddCommand = cmd({
               [name]: {
                 type: "remote" as const,
                 url: server,
+                ...(argv["api-key"] && {
+                  headers: {
+                    Authorization: `Bearer ${argv["api-key"]}`,
+                  },
+                }),
               },
             },
           }
 
           await Config.update(newConfig)
           UI.println(`Remote MCP server "${name}" configured with URL: ${server}`)
+          if (argv["api-key"]) {
+            UI.println(`Authorization header set with API key`)
+          }
           prompts.outro("MCP server added successfully")
           return
         }
@@ -195,6 +207,12 @@ export const McpAddCommand = cmd({
         })
         if (prompts.isCancel(url)) throw new UI.CancelledError()
 
+        const apiKey = await prompts.text({
+          message: "Enter API key (optional)",
+          placeholder: "API key for Bearer token authentication",
+        })
+        if (prompts.isCancel(apiKey)) throw new UI.CancelledError()
+
         const client = new Client({
           name: "opencode",
           version: "1.0.0",
@@ -208,12 +226,20 @@ export const McpAddCommand = cmd({
             [name]: {
               type: "remote" as const,
               url: url,
+              ...(apiKey && {
+                headers: {
+                  Authorization: `Bearer ${apiKey}`,
+                },
+              }),
             },
           },
         }
 
         await Config.update(newConfig)
         UI.println(`Remote MCP server "${name}" configured with URL: ${url}`)
+        if (apiKey) {
+          UI.println(`Authorization header set with API key`)
+        }
       }
 
       prompts.outro("MCP server added successfully")
