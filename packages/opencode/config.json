@@ -1,0 +1,8 @@
+{
+  "mcp": {
+    "test-server": {
+      "type": "remote",
+      "url": "http://localhost:8080"
+    }
+  }
+}
