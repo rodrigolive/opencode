@@ -38,6 +38,9 @@ type InterruptDebounceTimeoutMsg struct{}
 // ExitDebounceTimeoutMsg is sent when the exit key debounce timeout expires
 type ExitDebounceTimeoutMsg struct{}
 
+// PermissionTimeoutMsg is sent when waiting for permission response times out
+type PermissionTimeoutMsg struct{}
+
 // InterruptKeyState tracks the state of interrupt key presses for debouncing
 type InterruptKeyState int
 
@@ -56,6 +59,7 @@ const (
 
 const interruptDebounceTimeout = 1 * time.Second
 const exitDebounceTimeout = 1 * time.Second
+const permissionTimeout = 5 * time.Second
 
 type Model struct {
 	tea.Model
@@ -76,6 +80,7 @@ type Model struct {
 	toastManager         *toast.ToastManager
 	interruptKeyState    InterruptKeyState
 	exitKeyState         ExitKeyState
+	permissionTimer      *time.Timer
 	messagesRight        bool
 }
 
@@ -389,6 +394,13 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = a.modal.Close()
 		}
 		a.modal = nil
+		
+		// Stop permission timeout timer when modal is closed
+		if a.permissionTimer != nil {
+			a.permissionTimer.Stop()
+			a.permissionTimer = nil
+		}
+		
 		return a, cmd
 	case dialog.ReopenSessionModalMsg:
 		// Reopen the session modal (used when exiting rename mode)
@@ -651,6 +663,11 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.app.Permissions = append(a.app.Permissions, msg.Properties)
 		a.app.CurrentPermission = a.app.Permissions[0]
 		a.editor.Blur()
+		
+		// Return a tea.Tick command to send PermissionTimeoutMsg after 5 seconds
+		return a, tea.Tick(permissionTimeout, func(t time.Time) tea.Msg {
+			return PermissionTimeoutMsg{}
+		})
 	case opencode.EventListResponseEventPermissionReplied:
 		index := slices.IndexFunc(a.app.Permissions, func(p opencode.Permission) bool {
 			return p.ID == msg.Properties.PermissionID
@@ -777,6 +794,18 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reset exit key state after timeout
 		a.exitKeyState = ExitKeyIdle
 		a.editor.SetExitKeyInDebounce(false, "")
+	case PermissionTimeoutMsg:
+		// Show macOS notification if waiting for permission
+		if a.app.CurrentPermission.ID != "" {
+			// Show notification but don't interrupt the waiting state
+			message := "Still waiting for your response..."
+			if a.app.CurrentPermission.Title != "" {
+				message = "Permission requested: " + a.app.CurrentPermission.Title
+			}
+			go func() {
+				_ = util.ShowMacOSNotification("OpenCode", message)
+			}()
+		}
 	case tea.PasteMsg, tea.ClipboardMsg:
 		// Paste events: prioritize modal if active, otherwise editor
 		if a.modal != nil {
@@ -1544,8 +1573,18 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 		a.messages = updated.(chat.MessagesComponent)
 		cmds = append(cmds, cmd)
 	case commands.AppExitCommand:
+		// Stop permission timeout timer when app exits
+		if a.permissionTimer != nil {
+			a.permissionTimer.Stop()
+			a.permissionTimer = nil
+		}
 		return a, tea.Quit
 	case commands.AppExitNoClearCommand:
+		// Stop permission timeout timer when app exits
+		if a.permissionTimer != nil {
+			a.permissionTimer.Stop()
+			a.permissionTimer = nil
+		}
 		// Exit without clearing screen but reset terminal modes and move cursor to bottom
 		return a, tea.Sequence(
 			tea.ExitAltScreen,

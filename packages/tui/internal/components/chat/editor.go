@@ -48,6 +48,8 @@ type EditorComponent interface {
 	SetInterruptKeyInDebounce(inDebounce bool)
 	SetExitKeyInDebounce(inDebounce bool, key string)
 	RestoreFromHistory(index int)
+	SetLeaderHelp(show bool)
+	ShowLeaderHelp() bool
 }
 
 type editorComponent struct {
@@ -62,6 +64,10 @@ type editorComponent struct {
 	currentText            string // Store current text when navigating history
 	pasteCounter           int
 	reverted               bool
+	showLeaderHelp         bool     // Show help overlay when leader key is pressed
+	escKeyPressed          bool     // Track if esc key was pressed to clear textarea on second press
+	shellHistory           []string // Shell command history
+	shellHistoryIndex      int      // -1 means current (not in shell history)
 }
 
 func (m *editorComponent) Init() tea.Cmd {
@@ -80,49 +86,116 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case tea.KeyPressMsg:
+		// Handle esc key for clearing textarea
+		if msg.String() == "esc" {
+			if m.textarea.Length() > 0 {
+				if m.escKeyPressed {
+					// Second esc press - clear the textarea
+					m.escKeyPressed = false
+					updated, cmd := m.Clear()
+					m = updated.(*editorComponent)
+					return m, cmd
+				} else {
+					// First esc press - just mark it
+					m.escKeyPressed = true
+					return m, nil
+				}
+			} else {
+				// No text in textarea, reset esc state
+				m.escKeyPressed = false
+			}
+		} else {
+			// Any other key resets esc state
+			m.escKeyPressed = false
+		}
+
 		// Handle up/down arrows and ctrl+p/ctrl+n for history navigation
 		switch msg.String() {
 		case "up", "ctrl+p":
-			// Only navigate history if cursor is at the first line and column (for arrow keys)
-			// or allow ctrl+p from anywhere
-			if (msg.String() == "ctrl+p" || (m.textarea.Line() == 0 && m.textarea.CursorColumn() == 0)) && len(m.app.State.MessageHistory) > 0 {
-				if m.historyIndex == -1 {
-					// Save current text before entering history
-					m.currentText = m.textarea.Value()
-					m.textarea.MoveToBegin()
+			if m.app.IsBashMode {
+				// Shell mode - use shell command history
+				if len(m.shellHistory) > 0 {
+					if m.shellHistoryIndex == -1 {
+						// Save current text before entering shell history
+						m.currentText = m.textarea.Value()
+						m.textarea.MoveToBegin()
+					}
+					// Move up in shell history (older commands)
+					if m.shellHistoryIndex < len(m.shellHistory)-1 {
+						m.shellHistoryIndex++
+						m.textarea.Reset()
+						m.textarea.SetValue(m.shellHistory[m.shellHistoryIndex])
+						m.textarea.MoveToBegin()
+					}
+					return m, nil
 				}
-				// Move up in history (older messages)
-				if m.historyIndex < len(m.app.State.MessageHistory)-1 {
-					m.historyIndex++
-					m.RestoreFromHistory(m.historyIndex)
-					m.textarea.MoveToBegin()
+			} else {
+				// Normal mode - use message history
+				// Only navigate history if cursor is at the first line and column (for arrow keys)
+				// or allow ctrl+p from anywhere
+				if (msg.String() == "ctrl+p" || (m.textarea.Line() == 0 && m.textarea.CursorColumn() == 0)) && len(m.app.State.MessageHistory) > 0 {
+					if m.historyIndex == -1 {
+						// Save current text before entering history
+						m.currentText = m.textarea.Value()
+						m.textarea.MoveToBegin()
+					}
+					// Move up in history (older messages)
+					if m.historyIndex < len(m.app.State.MessageHistory)-1 {
+						m.historyIndex++
+						m.RestoreFromHistory(m.historyIndex)
+						m.textarea.MoveToBegin()
+					}
+					return m, nil
 				}
-				return m, nil
 			}
 		case "down", "ctrl+n":
-			// Only navigate history if cursor is at the last line and we're in history navigation (for arrow keys)
-			// or allow ctrl+n from anywhere if we're in history navigation
-			if (msg.String() == "ctrl+n" || m.textarea.IsCursorAtEnd()) && m.historyIndex > -1 {
-				// Move down in history (newer messages)
-				m.historyIndex--
-				if m.historyIndex == -1 {
-					// Restore current text
-					m.textarea.Reset()
-					m.textarea.SetValue(m.currentText)
-					m.currentText = ""
-				} else {
-					m.RestoreFromHistory(m.historyIndex)
-					m.textarea.MoveToEnd()
+			if m.app.IsBashMode {
+				// Shell mode - use shell command history
+				if m.shellHistoryIndex > -1 {
+					// Move down in shell history (newer commands)
+					m.shellHistoryIndex--
+					if m.shellHistoryIndex == -1 {
+						// Restore current text
+						m.textarea.Reset()
+						m.textarea.SetValue(m.currentText)
+						m.currentText = ""
+					} else {
+						m.textarea.Reset()
+						m.textarea.SetValue(m.shellHistory[m.shellHistoryIndex])
+						m.textarea.MoveToEnd()
+					}
+					return m, nil
 				}
-				return m, nil
-			} else if m.historyIndex > -1 && msg.String() == "down" {
-				m.textarea.MoveToEnd()
-				return m, nil
+			} else {
+				// Normal mode - use message history
+				// Only navigate history if cursor is at the last line and we're in history navigation (for arrow keys)
+				// or allow ctrl+n from anywhere if we're in history navigation
+				if (msg.String() == "ctrl+n" || m.textarea.IsCursorAtEnd()) && m.historyIndex > -1 {
+					// Move down in history (newer messages)
+					m.historyIndex--
+					if m.historyIndex == -1 {
+						// Restore current text
+						m.textarea.Reset()
+						m.textarea.SetValue(m.currentText)
+						m.currentText = ""
+					} else {
+						m.RestoreFromHistory(m.historyIndex)
+						m.textarea.MoveToEnd()
+					}
+					return m, nil
+				} else if m.historyIndex > -1 && msg.String() == "down" {
+					m.textarea.MoveToEnd()
+					return m, nil
+				}
 			}
 		}
 		// Reset history navigation on any other input
 		if m.historyIndex != -1 {
 			m.historyIndex = -1
+			m.currentText = ""
+		}
+		if m.shellHistoryIndex != -1 {
+			m.shellHistoryIndex = -1
 			m.currentText = ""
 		}
 		// Maximize editor responsiveness for printable characters
@@ -379,36 +452,41 @@ func (m *editorComponent) Content() string {
 		BorderRight(true).
 		Render(textarea)
 
-	hint := base(m.getSubmitKeyText()) + muted(" send   ")
-	if m.exitKeyInDebounce {
-		keyText := m.lastExitKey
-		if keyText == "" {
-			keyText = m.getExitKeyText()
-		}
-		hint = base(keyText+" again") + muted(" to exit")
-	} else if m.app.IsBusy() {
-		keyText := m.getInterruptKeyText()
-		status := "working"
-		if m.app.IsCompacting() {
-			status = "compacting"
-		}
-		if m.app.CurrentPermission.ID != "" {
-			status = "waiting for permission"
-		}
-		if m.interruptKeyInDebounce && m.app.CurrentPermission.ID == "" {
-			hint = muted(
-				status,
-			) + m.spinner.View() + muted(
-				"  ",
-			) + base(
-				keyText+" again",
-			) + muted(
-				" interrupt",
-			)
-		} else {
-			hint = muted(status) + m.spinner.View()
-			if m.app.CurrentPermission.ID == "" {
-				hint += muted("  ") + base(keyText) + muted(" interrupt")
+	var hint string
+	if m.showLeaderHelp {
+		hint = m.renderLeaderHelp()
+	} else {
+		hint = base(m.getSubmitKeyText()) + muted(" send   ")
+		if m.exitKeyInDebounce {
+			keyText := m.lastExitKey
+			if keyText == "" {
+				keyText = m.getExitKeyText()
+			}
+			hint = base(keyText+" again") + muted(" to exit")
+		} else if m.app.IsBusy() {
+			keyText := m.getInterruptKeyText()
+			status := "working"
+			if m.app.IsCompacting() {
+				status = "compacting"
+			}
+			if m.app.CurrentPermission.ID != "" {
+				status = "waiting for permission"
+			}
+			if m.interruptKeyInDebounce && m.app.CurrentPermission.ID == "" {
+				hint = muted(
+					status,
+				) + m.spinner.View() + muted(
+					"  ",
+				) + base(
+					keyText+" again",
+				) + muted(
+					" interrupt",
+				)
+			} else {
+				hint = muted(status) + m.spinner.View()
+				if m.app.CurrentPermission.ID == "" {
+					hint += muted("  ") + base(keyText) + muted(" interrupt")
+				}
 			}
 		}
 	}
@@ -416,6 +494,19 @@ func (m *editorComponent) Content() string {
 	model := ""
 	if m.app.Model != nil {
 		model = muted(m.app.Provider.Name) + base(" "+m.app.Model.Name)
+		// Add context token limit display
+		contextLimit := m.app.Model.Limit.Context
+		if contextLimit > 0 {
+			var limitStr string
+			if contextLimit >= 1000000 {
+				limitStr = fmt.Sprintf("%.0fM", contextLimit/1000000)
+			} else if contextLimit >= 1000 {
+				limitStr = fmt.Sprintf("%.0fK", contextLimit/1000)
+			} else {
+				limitStr = fmt.Sprintf("%.0f", contextLimit)
+			}
+			model += base(" • ") + muted(limitStr+" tokens")
+		}
 	}
 
 	space := width - 2 - lipgloss.Width(model) - lipgloss.Width(hint)
@@ -544,6 +635,16 @@ func (m *editorComponent) Submit() (tea.Model, tea.Cmd) {
 
 func (m *editorComponent) SubmitBash() (tea.Model, tea.Cmd) {
 	command := m.textarea.Value()
+
+	// Add command to shell history if it's not empty and not a duplicate of the last command
+	if command != "" && (len(m.shellHistory) == 0 || m.shellHistory[len(m.shellHistory)-1] != command) {
+		m.shellHistory = append(m.shellHistory, command)
+		// Limit shell history to last 100 commands
+		if len(m.shellHistory) > 100 {
+			m.shellHistory = m.shellHistory[len(m.shellHistory)-100:]
+		}
+	}
+
 	var cmds []tea.Cmd
 	updated, cmd := m.Clear()
 	m = updated.(*editorComponent)
@@ -555,8 +656,10 @@ func (m *editorComponent) SubmitBash() (tea.Model, tea.Cmd) {
 func (m *editorComponent) Clear() (tea.Model, tea.Cmd) {
 	m.textarea.Reset()
 	m.historyIndex = -1
+	m.shellHistoryIndex = -1
 	m.currentText = ""
 	m.pasteCounter = 0
+	m.escKeyPressed = false
 	return m, nil
 }
 
@@ -670,6 +773,108 @@ func (m *editorComponent) getExitKeyText() string {
 	return m.app.Commands[commands.AppExitCommand].Keys()[0]
 }
 
+func (m *editorComponent) SetLeaderHelp(show bool) {
+	m.showLeaderHelp = show
+}
+
+func (m *editorComponent) ShowLeaderHelp() bool {
+	return m.showLeaderHelp
+}
+
+func (m *editorComponent) renderLeaderHelp() string {
+	t := theme.CurrentTheme()
+	muted := styles.NewStyle().Foreground(t.TextMuted()).Background(t.Background()).Render
+	highlight := styles.NewStyle().Foreground(t.Primary()).Background(t.Background()).Bold(true).Render
+
+	// Get leader commands (commands that require leader key)
+	var leaderCommands []commands.Command
+	for _, cmd := range m.app.Commands.Sorted() {
+		for _, kb := range cmd.Keybindings {
+			if kb.RequiresLeader {
+				leaderCommands = append(leaderCommands, cmd)
+				break
+			}
+		}
+	}
+
+	// Limit to most useful commands for the help overlay
+	usefulCommands := []commands.CommandName{
+		commands.SessionNewCommand,
+		commands.SessionListCommand,
+		commands.SessionShareCommand,
+		commands.SessionCompactCommand,
+		commands.ModelListCommand,
+		commands.AgentListCommand,
+		commands.MessagesUndoCommand,
+		commands.MessagesRedoCommand,
+		commands.EditorOpenCommand,
+		commands.SessionExportCommand,
+		commands.ToolDetailsCommand,
+		commands.ThinkingBlocksCommand,
+		commands.ThemeListCommand,
+		commands.ProjectInitCommand,
+		commands.MessagesCopyCommand,
+	}
+
+	var helpCommands []commands.Command
+	for _, cmdName := range usefulCommands {
+		if cmd, exists := m.app.Commands[cmdName]; exists {
+			helpCommands = append(helpCommands, cmd)
+		}
+	}
+
+	if len(helpCommands) == 0 {
+		return muted("no leader commands available")
+	}
+
+	var parts []string
+	for _, cmd := range helpCommands {
+		// Find the leader keybinding
+		var leaderKey string
+		for _, kb := range cmd.Keybindings {
+			if kb.RequiresLeader {
+				leaderKey = kb.Key
+				break
+			}
+		}
+		if leaderKey == "" {
+			continue
+		}
+
+		// Extract the letter to highlight
+		letter := leaderKey
+		if len(leaderKey) > 0 {
+			letter = leaderKey[len(leaderKey)-1:]
+		}
+
+		// Format: "cop*y*" "*l*ist-sessions" etc.
+		description := cmd.Description
+		if len(description) > 0 {
+			// Find the letter in the description and highlight it
+			highlighted := ""
+			found := false
+			for _, r := range description {
+				if strings.ToLower(string(r)) == strings.ToLower(letter) && !found {
+					highlighted += highlight(string(r))
+					found = true
+				} else {
+					highlighted += muted(string(r))
+				}
+			}
+			if !found {
+				// If letter not found in description, append it
+				highlighted = muted(description) + " " + highlight("*"+letter+"*")
+			}
+			parts = append(parts, highlighted)
+		}
+	}
+
+	if len(parts) == 0 {
+		return muted("no leader commands available")
+	}
+
+	return strings.Join(parts, "  ")
+}
 
 // shouldSummarizePastedText determines if pasted text should be summarized
 func (m *editorComponent) shouldSummarizePastedText(text string) bool {
@@ -783,7 +988,9 @@ func NewEditorComponent(app *app.App) EditorComponent {
 		spinner:                s,
 		interruptKeyInDebounce: false,
 		historyIndex:           -1,
+		shellHistoryIndex:      -1,
 		pasteCounter:           0,
+		shellHistory:           make([]string, 0),
 	}
 
 	return m
