@@ -98,6 +98,7 @@ type FileRenderedMsg struct {
 type PermissionRespondedToMsg struct {
 	Response opencode.SessionPermissionRespondParamsResponse
 }
+type IdleNotificationMsg struct{}
 
 func New(
 	ctx context.Context,

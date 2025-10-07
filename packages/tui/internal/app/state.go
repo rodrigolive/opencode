@@ -26,6 +26,11 @@ type AgentModel struct {
 	ModelID    string `toml:"model_id"`
 }
 
+type NotificationConfig struct {
+	PreferredChannel string `toml:"preferred_notification_channel"`
+	IdleThresholdMs  int64  `toml:"idle_notification_threshold_ms"`
+}
+
 type State struct {
 	Theme              string                `toml:"theme"`
 	AgentModel         map[string]AgentModel `toml:"agent_model"`
@@ -37,6 +42,7 @@ type State struct {
 	MessageHistory     []Prompt              `toml:"message_history"`
 	ShowToolDetails    *bool                 `toml:"show_tool_details"`
 	ShowThinkingBlocks *bool                 `toml:"show_thinking_blocks"`
+	Notification       NotificationConfig    `toml:"notification"`
 }
 
 func NewState() *State {
@@ -47,6 +53,10 @@ func NewState() *State {
 		RecentlyUsedModels: make([]ModelUsage, 0),
 		RecentlyUsedAgents: make([]AgentUsage, 0),
 		MessageHistory:     make([]Prompt, 0),
+		Notification: NotificationConfig{
+			PreferredChannel: "auto",
+			IdleThresholdMs:  60000, // 60 seconds default
+		},
 	}
 }
 

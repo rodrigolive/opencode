@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/v2/spinner"
@@ -64,13 +65,18 @@ type editorComponent struct {
 	currentText            string // Store current text when navigating history
 	pasteCounter           int
 	reverted               bool
-	showLeaderHelp         bool     // Show help overlay when leader key is pressed
-	escKeyPressed          bool     // Track if esc key was pressed to clear textarea on second press
-	shellHistory           []string // Shell command history
-	shellHistoryIndex      int      // -1 means current (not in shell history)
+	showLeaderHelp         bool        // Show help overlay when leader key is pressed
+	escKeyPressed          bool        // Track if esc key was pressed to clear textarea on second press
+	shellHistory           []string    // Shell command history
+	shellHistoryIndex      int         // -1 means current (not in shell history)
+	lastActivityTime       time.Time   // Track last user activity time for idle detection
+	idleTimer              *time.Timer // Timer to check for idle state
 }
 
 func (m *editorComponent) Init() tea.Cmd {
+	// Start idle timer to check for inactivity
+	m.startIdleTimer()
+
 	return tea.Batch(m.textarea.Focus(), m.spinner.Tick, tea.EnableReportFocus)
 }
 
@@ -86,6 +92,9 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	case tea.KeyPressMsg:
+		// Update last activity time for any key press
+		m.updateLastActivityTime()
+
 		// Handle esc key for clearing textarea
 		if msg.String() == "esc" {
 			if m.textarea.Length() > 0 {
@@ -777,6 +786,31 @@ func (m *editorComponent) SetLeaderHelp(show bool) {
 	m.showLeaderHelp = show
 }
 
+func (m *editorComponent) updateLastActivityTime() {
+	m.lastActivityTime = time.Now()
+}
+
+// startIdleTimer starts a timer that periodically checks for idle state
+func (m *editorComponent) startIdleTimer() {
+	// Check every 10 seconds if the app has been idle for the configured threshold
+	m.idleTimer = time.AfterFunc(10*time.Second, func() {
+		// Check if the app is currently busy
+		if m.app.IsBusy() {
+			// If the app is busy, check if it's been idle for the configured threshold
+			idleThreshold := time.Duration(m.app.State.Notification.IdleThresholdMs) * time.Millisecond
+			idleTime := time.Since(m.lastActivityTime)
+
+			if idleTime >= idleThreshold {
+				// Send a message to notify that the app is idle
+				util.CmdHandler(app.IdleNotificationMsg{})()
+			}
+		}
+
+		// Restart the timer
+		m.startIdleTimer()
+	})
+}
+
 func (m *editorComponent) ShowLeaderHelp() bool {
 	return m.showLeaderHelp
 }
@@ -991,6 +1025,7 @@ func NewEditorComponent(app *app.App) EditorComponent {
 		shellHistoryIndex:      -1,
 		pasteCounter:           0,
 		shellHistory:           make([]string, 0),
+		lastActivityTime:       time.Now(), // Initialize with current time
 	}
 
 	return m

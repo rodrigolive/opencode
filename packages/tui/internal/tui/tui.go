@@ -394,13 +394,13 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = a.modal.Close()
 		}
 		a.modal = nil
-		
+
 		// Stop permission timeout timer when modal is closed
 		if a.permissionTimer != nil {
 			a.permissionTimer.Stop()
 			a.permissionTimer = nil
 		}
-		
+
 		return a, cmd
 	case dialog.ReopenSessionModalMsg:
 		// Reopen the session modal (used when exiting rename mode)
@@ -480,6 +480,31 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := a.editor.Focus()
 		a.editor = updated.(chat.EditorComponent)
 		cmds = append(cmds, cmd)
+	case app.IdleNotificationMsg:
+		// Show notification when app is idle
+		title := "OpenCode Idle"
+		message := "Your OpenCode session has been idle for a while"
+
+		// Dispatch notification based on configuration
+		notification := util.Notification{
+			Title:   title,
+			Message: message,
+		}
+
+		// Use the notification config from app state
+		config := util.NotificationConfig{
+			PreferredChannel: util.NotificationChannel(a.app.State.Notification.PreferredChannel),
+			IdleThresholdMs:  a.app.State.Notification.IdleThresholdMs,
+		}
+
+		go func() {
+			_ = util.DispatchNotification(notification, config)
+		}()
+
+		// Also show macOS notification
+		go func() {
+			_ = util.ShowMacOSNotification(title, message)
+		}()
 	case app.SessionClearedMsg:
 		a.app.Session = &opencode.Session{}
 		a.app.Messages = []app.Message{}
@@ -663,7 +688,7 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.app.Permissions = append(a.app.Permissions, msg.Properties)
 		a.app.CurrentPermission = a.app.Permissions[0]
 		a.editor.Blur()
-		
+
 		// Return a tea.Tick command to send PermissionTimeoutMsg after 5 seconds
 		return a, tea.Tick(permissionTimeout, func(t time.Time) tea.Msg {
 			return PermissionTimeoutMsg{}
