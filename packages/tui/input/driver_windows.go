@@ -464,9 +464,9 @@ func (p *Parser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ u
 	case vkc == xwindows.VK_MEDIA_PLAY_PAUSE:
 		baseCode = KeyMediaPlayPause
 	case vkc == xwindows.VK_OEM_1, vkc == xwindows.VK_OEM_PLUS, vkc == xwindows.VK_OEM_COMMA,
-		 vkc == xwindows.VK_OEM_MINUS, vkc == xwindows.VK_OEM_PERIOD, vkc == xwindows.VK_OEM_2,
-		 vkc == xwindows.VK_OEM_3, vkc == xwindows.VK_OEM_4, vkc == xwindows.VK_OEM_5,
-		 vkc == xwindows.VK_OEM_6, vkc == xwindows.VK_OEM_7:
+		vkc == xwindows.VK_OEM_MINUS, vkc == xwindows.VK_OEM_PERIOD, vkc == xwindows.VK_OEM_2,
+		vkc == xwindows.VK_OEM_3, vkc == xwindows.VK_OEM_4, vkc == xwindows.VK_OEM_5,
+		vkc == xwindows.VK_OEM_6, vkc == xwindows.VK_OEM_7:
 		// Use the actual character provided by Windows for current keyboard layout
 		// instead of hardcoded US layout mappings
 		if !unicode.IsControl(r) && unicode.IsPrint(r) {
@@ -531,7 +531,7 @@ func (p *Parser) parseWin32InputKeyEvent(state *win32InputState, vkc uint16, _ u
 			text = string(keyCode)
 		}
 	}
-	
+
 	// Special case: numeric keypad divide should produce "/" text on all layouts (fix french keyboard layout)
 	if baseCode == KeyKpDivide {
 		text = "/"

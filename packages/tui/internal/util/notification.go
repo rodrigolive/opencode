@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -145,9 +146,9 @@ func RingTerminalBell() {
 func ShowITerm2Notification(notification Notification) {
 	formatted := notification.Message
 	if notification.Title != "" {
-		formatted = notification.Title + ": " + notification.Message
+		formatted = notification.Title + ":\n" + notification.Message
 	}
-	os.Stdout.WriteString("\x1B]9;" + formatted + "\x07")
+	os.Stdout.WriteString("\x1B]9;\n\n" + formatted + "\x07")
 }
 
 // ShowKittyNotification shows a notification in Kitty using OSC 99
@@ -233,7 +234,27 @@ func ShowMacOSNotification(title, message string) error {
 		return nil // Only run on macOS
 	}
 
-	script := `display notification "` + message + `" with title "` + title + `"`
+	note := Notification{Title: title, Message: message}
+	term := DetectTerminal()
+	if term == TerminalTypeITerm2 {
+		ShowITerm2Notification(note)
+		return nil
+	}
+	if term == TerminalTypeKitty {
+		ShowKittyNotification(note)
+		return nil
+	}
+	if term == TerminalTypeGhostty {
+		ShowGhosttyNotification(note)
+		return nil
+	}
+	if term == TerminalTypeAppleTerminal && IsBellEnabledForAppleTerminal() {
+		RingTerminalBell()
+		return nil
+	}
+	titleArg := strconv.Quote(title)
+	messageArg := strconv.Quote(message)
+	script := "display notification " + messageArg + " with title " + titleArg
 	cmd := exec.Command("osascript", "-e", script)
 	return cmd.Run()
 }

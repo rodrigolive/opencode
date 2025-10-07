@@ -3,8 +3,6 @@ package util
 import (
 	"log/slog"
 	"os"
-	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 
@@ -46,15 +44,4 @@ func Measure(tag string) func(...any) {
 		args = append(args, []any{"timeTakenMs", time.Since(startTime).Milliseconds()}...)
 		slog.Debug(tag, args...)
 	}
-}
-
-// ShowMacOSNotification displays a notification on macOS using osascript
-func ShowMacOSNotification(title, message string) error {
-	if runtime.GOOS != "darwin" {
-		return nil // Only run on macOS
-	}
-
-	script := `display notification "` + message + `" with title "` + title + `"`
-	cmd := exec.Command("osascript", "-e", script)
-	return cmd.Run()
 }
